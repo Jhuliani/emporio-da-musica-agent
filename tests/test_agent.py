@@ -120,3 +120,28 @@ def test_authentication_error_is_reported(make_agent):
     reply = make_agent(error).reply([], "oi")
     assert reply.text == FALLBACK_REPLY
     assert "Chave de API" in reply.error
+
+
+def test_unbacked_handoff_claim_triggers_self_check(make_agent):
+    agent = make_agent(
+        text_message("Já registrei sua reclamação!"),  # claim without calling the tool
+        tool_message("escalate_to_human", {"reason": "complaint", "summary": "Atendimento ruim"}),
+        text_message("Sua reclamação foi registrada; a equipe responde em até 24 horas úteis."),
+    )
+    reply = agent.reply([], "Quero reclamar do atendimento")
+
+    assert [c.name for c in reply.tool_calls] == ["escalate_to_human"]
+    assert "24 horas" in reply.text
+    saved = json.dumps(reply.new_messages, ensure_ascii=False)
+    assert "Verificação automática" not in saved
+    assert "Já registrei" not in saved
+
+
+def test_handoff_claim_after_real_escalation_is_accepted(make_agent):
+    agent = make_agent(
+        tool_message("escalate_to_human", {"reason": "complaint", "summary": "x"}),
+        text_message("Pronto, registrei sua reclamação."),
+    )
+    reply = agent.reply([], "Quero reclamar")
+    assert reply.text == "Pronto, registrei sua reclamação."
+    assert len(agent.client.requests) == 2

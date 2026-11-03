@@ -65,13 +65,18 @@ class StoreTools:
 
     def _summary(self, p: Product) -> dict:
         category = self.store.categories.get(p.category_id)
+        quote = rules.price_quote(p, self.store)
+        # Per-product installments, so the LLM never generalizes "12x" to cheap items.
+        max_installments = rules.installment_options(quote["price"])[-1]
         return {
             "product_id": p.product_id,
             "name": p.name,
             "category": category.name if category else None,
             "availability": rules.availability(p),
             "stock_quantity": p.stock_quantity if p.status == "active" else 0,
-            **rules.price_quote(p, self.store),
+            **quote,
+            "max_installments": max_installments["installments"],
+            "installment_value": max_installments["value"],
         }
 
     def _alternatives(self, p: Product, limit: int = 3) -> list[dict]:

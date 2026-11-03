@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -17,7 +18,7 @@ import openai
 from emporio.data import load_store
 from emporio.llm import LLMConfig
 from emporio.prompt import build_system_prompt
-from emporio.tools import StoreTools, tool_schemas
+from emporio.tools import StoreTools, normalize, tool_schemas
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,13 @@ MAX_TOOL_ROUNDS = 6
 FALLBACK_REPLY = (
     "Desculpe, tive um problema técnico para responder agora. "
     "Você pode tentar de novo ou falar com a nossa equipe pelo WhatsApp (67) 3341-4444."
+)
+# "registrei", "encaminhei", "foi registrada"... (accent-insensitive)
+HANDOFF_CLAIM = re.compile(r"\b(registrei|encaminhei|anotei|foi registrad\w*|foi encaminhad\w*)\b")
+HANDOFF_NUDGE = (
+    "[Verificação automática] Sua resposta diz que algo foi registrado ou encaminhado, mas "
+    "`escalate_to_human` não foi chamada. Chame a ferramenta agora se for o caso, ou reescreva "
+    "a resposta sem afirmar uma ação que não aconteceu."
 )
 
 
@@ -55,6 +63,7 @@ class Agent:
         new_messages: list[dict] = [{"role": "user", "content": user_message}]
         calls: list[ToolCall] = []
         system = {"role": "system", "content": build_system_prompt(self.tools.now())}
+        correction_index: Optional[int] = None
 
         try:
             for _ in range(MAX_TOOL_ROUNDS):
@@ -68,6 +77,16 @@ class Agent:
 
                 if not message.tool_calls:
                     text = (message.content or "").strip() or FALLBACK_REPLY
+                    if correction_index is None and self._claims_unperformed_handoff(text, history, calls):
+                        # Self-check: the model said it registered/forwarded something
+                        # without calling the tool. Ask it once to act or correct itself;
+                        # the draft and the nudge are dropped from the saved history.
+                        correction_index = len(new_messages)
+                        new_messages += [{"role": "assistant", "content": text},
+                                         {"role": "user", "content": HANDOFF_NUDGE}]
+                        continue
+                    if correction_index is not None:
+                        del new_messages[correction_index:correction_index + 2]
                     new_messages.append({"role": "assistant", "content": text})
                     return AgentReply(text, calls, new_messages)
 
@@ -104,6 +123,17 @@ class Agent:
         except openai.APIError as exc:
             logger.exception("LLM API error")
             return self._failure(new_messages, calls, f"Erro do provedor: {exc}")
+
+    @staticmethod
+    def _claims_unperformed_handoff(text: str, history: list[dict], calls: list[ToolCall]) -> bool:
+        if not HANDOFF_CLAIM.search(normalize(text)):
+            return False
+        if any(c.name == "escalate_to_human" for c in calls):
+            return False
+        return not any(
+            tc.get("function", {}).get("name") == "escalate_to_human"
+            for m in history for tc in m.get("tool_calls") or []
+        )
 
     def _run_tool(self, name: str, raw_arguments: str) -> ToolCall:
         try:
