@@ -1,0 +1,9 @@
+[project]
+name = "emporio-agent"
+version = "0.1.0"
+description = "Customer service agent for Empório da Música (AI Engineer technical challenge)"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Personal files / hiring process material
+PLANO.md
+desafio_tecnico_ai_eng_artefact.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Runtime-generated data
+*.sqlite
+*.db
+logs/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
