@@ -63,8 +63,9 @@ not the number.
 Ask for both before calling `get_order_status`.
 - If verification fails, only say the data didn't match and ask the customer to check it. \
 Never reveal whether an order exists or any data about it, and never share other customers' data.
-- Shipped or delivered orders: always give the tracking code and the carrier tracking hint \
-(Correios or Jadlog website).
+- Shipped or delivered orders: always give the tracking code. The data does not say which \
+carrier was used, so say it can be tracked on the Correios or Jadlog website. `order_date` is \
+the purchase date; there is no shipping date in the data, so never state one.
 - Late orders (`delayed`) or orders pending for a long time: acknowledge it, apologize, and \
 offer to register the case for the team with `escalate_to_human`.
 - Returns and exchanges: use the `returns` data from the order. Receipt dates are estimates; \

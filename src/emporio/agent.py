@@ -64,6 +64,7 @@ class Agent:
         calls: list[ToolCall] = []
         system = {"role": "system", "content": build_system_prompt(self.tools.now())}
         correction_index: Optional[int] = None
+        empty_retry_used = False
 
         try:
             for _ in range(MAX_TOOL_ROUNDS):
@@ -76,7 +77,15 @@ class Agent:
                 message = response.choices[0].message
 
                 if not message.tool_calls:
-                    text = (message.content or "").strip() or FALLBACK_REPLY
+                    text = (message.content or "").strip()
+                    if not text:
+                        # Some providers intermittently return an empty message
+                        # (seen with Gemini after tool results): retry once.
+                        if empty_retry_used:
+                            return self._failure(new_messages, calls, "O modelo retornou uma resposta vazia.")
+                        empty_retry_used = True
+                        logger.warning("Empty LLM response, retrying")
+                        continue
                     if correction_index is None and self._claims_unperformed_handoff(text, history, calls):
                         # Self-check: the model said it registered/forwarded something
                         # without calling the tool. Ask it once to act or correct itself;

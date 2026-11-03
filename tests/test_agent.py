@@ -145,3 +145,20 @@ def test_handoff_claim_after_real_escalation_is_accepted(make_agent):
     reply = agent.reply([], "Quero reclamar")
     assert reply.text == "Pronto, registrei sua reclamação."
     assert len(agent.client.requests) == 2
+
+
+def test_empty_response_is_retried_once(make_agent):
+    agent = make_agent(
+        tool_message("get_store_status", {}),
+        text_message(""),
+        text_message("Estamos abertos!"),
+    )
+    reply = agent.reply([], "Estão abertos?")
+    assert reply.text == "Estamos abertos!"
+    assert reply.error is None
+
+
+def test_repeated_empty_response_is_reported_as_error(make_agent):
+    reply = make_agent(text_message(""), text_message("")).reply([], "oi")
+    assert reply.text == FALLBACK_REPLY
+    assert "vazia" in reply.error
