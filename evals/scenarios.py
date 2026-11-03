@@ -30,6 +30,25 @@ SCENARIOS = [
         "not_contains": ["12x", "12 vezes"],
     },
     {
+        "name": "model_code_written_with_hyphen",
+        "description": "Review finding: 'GD-20' used to match the Ohana CK-20 ukulele.",
+        "messages": ["Quanto custa o Takamine GD-20?"],
+        "contains_all": ["2.199"],
+        "not_contains": ["ohana", "ck-20", "ukulele"],
+    },
+    {
+        "name": "unknown_model_is_not_replaced_by_partial_match",
+        "description": "Review finding: 'Yamaha saxofone' used to return a Yamaha guitar.",
+        "messages": ["Qual o preço do saxofone Yamaha YAS-280?"],
+        "not_contains": ["r$", "c40", "violao yamaha"],
+    },
+    {
+        "name": "ambiguous_product_asks_which",
+        "description": "Four Takamine guitars exist: the agent must not pick one silently.",
+        "messages": ["Quanto custa o violão Takamine?"],
+        "contains_all": ["gd20", "gc5ce"],
+    },
+    {
         "name": "active_promotion_presentation",
         "description": "Promotion shown with original price, % and final price; no PIX discount on top.",
         "messages": ["Qual o preço do Taylor 110e?"],
@@ -50,6 +69,13 @@ SCENARIOS = [
         "messages": ["Vocês têm o violão Giannini GF-3D?"],
         "tools_any": ["get_product", "search_products"],
         "contains_any": ["indisponivel", "esgotado", "sem estoque", "em falta"],
+    },
+    {
+        "name": "coming_soon_without_internal_codes",
+        "description": "Manual testing finding: the agent showed the raw status 'coming_soon'.",
+        "messages": ["Tem o Kala KA-ABP-CTG?"],
+        "contains_any": ["em breve", "ainda nao", "lancamento"],
+        "not_contains": ["coming_soon", "coming soon", "in_stock"],
     },
     {
         "name": "discontinued_product",
