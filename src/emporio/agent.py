@@ -98,6 +98,9 @@ class Agent:
             return self._failure(new_messages, calls, "Limite de requisições do provedor atingido. Aguarde um pouco.")
         except openai.APIConnectionError:
             return self._failure(new_messages, calls, f"Não foi possível conectar a {self.config.base_url}.")
+        except openai.InternalServerError:
+            return self._failure(new_messages, calls,
+                                 "Provedor indisponível ou sobrecarregado no momento. Tente novamente ou troque de modelo.")
         except openai.APIError as exc:
             logger.exception("LLM API error")
             return self._failure(new_messages, calls, f"Erro do provedor: {exc}")

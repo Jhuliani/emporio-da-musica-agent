@@ -16,7 +16,7 @@ from openai import OpenAI
 PROVIDER_PRESETS = {
     "Gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.5-flash-lite",
         "key_url": "https://aistudio.google.com/apikey",
     },
     "OpenAI": {
