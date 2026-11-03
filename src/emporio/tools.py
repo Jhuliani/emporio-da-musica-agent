@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from emporio import rules
-from emporio.data import Product, StoreData, digits_only
+from emporio.data import Product, StoreData, brands_in, digits_only
 
 HANDOFF_FILE = Path(__file__).resolve().parents[2] / "logs" / "handoffs.jsonl"
+LAST_UNITS = 2  # stock at or below this is shown as "últimas unidades"
 
 # Singular/plural and common words customers use for each category, so that
 # a search for "violão" finds products in "Violões".
@@ -39,9 +40,25 @@ def normalize(text: str) -> str:
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
+# Words that carry no meaning for product search ("violão para iniciante").
+STOPWORDS = set(
+    "a o as os um uma uns umas de do da dos das em no na nos nas para pra por com sem e ou "
+    "que qual quais quanto custa preco valor tem voces vcs quero queria gostaria me um algum "
+    "alguma modelo produto instrumento ate mais muito bom boa".split()
+)
+
+
 def tokenize(text: str) -> list[str]:
-    """Accent-insensitive whole words ('Violão GD-20' -> ['violao', 'gd', '20'])."""
-    return re.findall(r"[a-z0-9]+", normalize(text))
+    """Accent-insensitive whole words, with short model codes glued to their numbers.
+
+    'Violão GD-20' and 'gd 20' both become ['violao', 'gd20'], so they match 'GD20'.
+    """
+    text = re.sub(r"\b([a-z]{1,3})[\s\-]+(?=\d)", r"\1", normalize(text))
+    return re.findall(r"[a-z0-9]+", text)
+
+
+def query_terms(text: str) -> list[str]:
+    return [t for t in tokenize(text) if t not in STOPWORDS]
 
 
 class StoreTools:
@@ -61,7 +78,11 @@ class StoreTools:
         category = self.store.categories.get(p.category_id)
         parts = [p.name, p.description, " ".join(map(str, p.specs.values())),
                  category.name if category else "", CATEGORY_KEYWORDS.get(p.category_id, "")]
-        return set(tokenize(" ".join(parts)))
+        words = set(tokenize(" ".join(parts)))
+        # Some descriptions mention a different brand than the product name
+        # (data_quality.md, 1.7): only the name defines the brand.
+        foreign = brands_in(p.description) - brands_in(p.name)
+        return words - {w for b in foreign for w in tokenize(b)}
 
     def _summary(self, p: Product) -> dict:
         category = self.store.categories.get(p.category_id)
@@ -73,10 +94,18 @@ class StoreTools:
             "name": p.name,
             "category": category.name if category else None,
             "availability": rules.availability(p),
-            "stock_quantity": p.stock_quantity if p.status == "active" else 0,
+            # Exact stock is internal: only a coarse level is exposed to the LLM.
+            "last_units": rules.availability(p) == "in_stock" and p.stock_quantity <= LAST_UNITS,
             **quote,
             "max_installments": max_installments["installments"],
             "installment_value": max_installments["value"],
+            # Ready-to-copy text, so the LLM never re-formats numbers.
+            "display": {
+                "price": rules.brl(quote["price"]),
+                "list_price": rules.brl(quote["list_price"]),
+                "pix_price": rules.brl(quote["pix_price"]),
+                "installments": f"{max_installments['installments']}x de {rules.brl(max_installments['value'])}",
+            },
         }
 
     def _alternatives(self, p: Product, limit: int = 3) -> list[dict]:
@@ -89,39 +118,42 @@ class StoreTools:
         candidates.sort(key=lambda o: abs(o.price_brl - p.price_brl))
         return [self._summary(o) for o in candidates[:limit]]
 
-    def _find_product(self, product_id: Optional[int], name: Optional[str]) -> Optional[Product]:
-        if product_id is not None:
-            return self.store.products.get(int(product_id))
-        if name:
-            results = self._rank(name)
-            return results[0] if results else None
-        return None
+    def _rank(self, query: str, products: Optional[list[Product]] = None) -> tuple[list[Product], bool]:
+        """Products with the highest number of matching query terms.
 
-    def _rank(self, query: str) -> list[Product]:
-        tokens = tokenize(query)
+        Returns (best matches, whether they match *all* query terms).
+        """
+        terms = query_terms(query)
         scored = []
-        for p in self.store.products.values():
+        for p in products if products is not None else self.store.products.values():
             haystack = self._haystack(p)
-            score = sum(1 for t in tokens if t in haystack)
+            score = sum(1 for t in terms if t in haystack)
             if score:
                 scored.append((score, p))
+        if not scored:
+            return [], False
         scored.sort(key=lambda sp: (-sp[0], sp[1].price_brl))
-        best = scored[0][0] if scored else 0
-        return [p for score, p in scored if score == best]
+        best = scored[0][0]
+        return [p for score, p in scored if score == best], best == len(terms)
 
     # --- tools ------------------------------------------------------------------
 
     def search_products(self, query: str = "", category: Optional[str] = None,
                         min_price: Optional[float] = None, max_price: Optional[float] = None,
                         only_available: bool = True, limit: int = 20) -> dict:
-        products = self._rank(query) if query.strip() else list(self.store.products.values())
-
+        products = list(self.store.products.values())
         if category:
             cat = self._category_by_name.get(normalize(category))
             if cat is None:
                 return {"error": f"Categoria desconhecida: {category}",
                         "valid_categories": [c.name for c in self.store.categories.values()]}
             products = [p for p in products if p.category_id == cat.category_id]
+
+        # Rank after filtering by category, so matches in other categories
+        # cannot push the relevant ones out.
+        matched_all_terms = True
+        if query_terms(query):
+            products, matched_all_terms = self._rank(query, products)
 
         results = [self._summary(p) for p in products]
         if min_price is not None:
@@ -136,6 +168,9 @@ class StoreTools:
 
         return {
             "total_found": len(results),
+            # False means results only partially match the query (e.g. 'Yamaha
+            # saxofone' -> Yamaha guitars): they are not what was asked for.
+            "matched_all_terms": matched_all_terms,
             "products": results[:limit],
             "unavailable_matches": [
                 {"name": r["name"], "availability": r["availability"]} for r in unavailable
@@ -143,9 +178,26 @@ class StoreTools:
         }
 
     def get_product(self, product_id: Optional[int] = None, name: Optional[str] = None) -> dict:
-        product = self._find_product(product_id, name)
-        if product is None:
-            return {"error": "Produto não encontrado no catálogo.", "query": name or product_id}
+        if product_id is not None:
+            product = self.store.products.get(int(product_id))
+            if product is None:
+                return {"error": "Produto não encontrado no catálogo.", "query": product_id}
+        else:
+            # Never guess: a name lookup must identify exactly one product.
+            matches, matched_all = self._rank(name or "")
+            if not matches or not matched_all:
+                return {
+                    "error": "Nenhum produto do catálogo corresponde a todos os termos.",
+                    "query": name,
+                    "partial_matches_not_the_requested_product": [p.name for p in matches[:5]],
+                }
+            if len(matches) > 1:
+                return {
+                    "ambiguous": True,
+                    "message": "Mais de um produto corresponde; pergunte ao cliente qual deles.",
+                    "candidates": [self._summary(p) for p in matches[:6]],
+                }
+            product = matches[0]
 
         details = self._summary(product)
         details.update(description=product.description, specs=product.specs)
@@ -278,7 +330,8 @@ def tool_schemas(store: StoreData) -> list[dict]:
             "Search the instrument catalog. Use for questions about which products exist, "
             "options within a price range, or a brand/model. Prices returned already include "
             "active promotions. By default only in-stock products are returned; "
-            "'unavailable_matches' lists matching products that cannot be sold now.",
+            "'unavailable_matches' lists matching products that cannot be sold now. "
+            "'matched_all_terms: false' means results only partially match the query.",
             {
                 "query": {"type": "string", "description": "Free text: brand, model or features (e.g. 'Yamaha nylon')."},
                 "category": {"type": "string", "enum": category_names},
@@ -292,7 +345,8 @@ def tool_schemas(store: StoreData) -> list[dict]:
             "get_product",
             "Get full details of one product: price, promotion, PIX price, installments, "
             "availability, specs. If unavailable, returns similar alternatives. "
-            "Always use before stating a product's price or availability.",
+            "Always use before stating a product's price or availability. A name lookup never "
+            "guesses: it returns 'ambiguous' with candidates, or an error if no product matches.",
             {
                 "product_id": {"type": "integer"},
                 "name": {"type": "string", "description": "Product name as said by the customer, if the id is unknown."},

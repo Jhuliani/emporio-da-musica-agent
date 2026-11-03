@@ -162,3 +162,20 @@ def test_repeated_empty_response_is_reported_as_error(make_agent):
     reply = make_agent(text_message(""), text_message("")).reply([], "oi")
     assert reply.text == FALLBACK_REPLY
     assert "vazia" in reply.error
+
+
+def test_history_is_trimmed_at_turn_boundaries():
+    from emporio.agent import trim_history
+
+    history = []
+    for i in range(12):
+        history += [
+            {"role": "user", "content": f"pergunta {i}"},
+            {"role": "assistant", "content": None, "tool_calls": [{"id": f"c{i}"}]},
+            {"role": "tool", "tool_call_id": f"c{i}", "content": "{}"},
+            {"role": "assistant", "content": f"resposta {i}"},
+        ]
+    trimmed = trim_history(history, max_turns=8)
+    assert trimmed[0] == {"role": "user", "content": "pergunta 4"}
+    assert len(trimmed) == 8 * 4
+    assert trim_history(history[:8], max_turns=8) == history[:8]

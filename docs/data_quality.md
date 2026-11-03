@@ -14,6 +14,7 @@ The store provided six CSV tables and an internal policy manual (PDF). Before bu
 | 1.4 | Categories 6, 7 and 8 (woodwinds, brass, orchestral strings) have **no products**, while the manual says the store sells them and has "more than 300 instruments" (the CSV has 65). | The CSV is the source of truth. The agent **never invents products**; for these categories it says there are no items available in the system right now and suggests contacting the store. |
 | 1.5 | Product specs mix languages and key formats (Portuguese for acoustic guitars, English for electric guitars, basses, drums and keyboards). | Kept as-is: they are passed to the LLM as structured data, which handles both languages. |
 | 1.6 | Product IDs are not sequential (145 appears between 130 and 131). | No impact; IDs are only used as keys. |
+| 1.7 | Five products have a description that names **another brand**: 135 "Music Man Bass 1X" is described as a "Fender Jazz Bass"; also 137 (Yamaha → Ibanez), 139 (Yamaha → Pearl), 142 (Korg → Roland) and 144 (Roland → Yamaha). Found during code review, when a search for "Fender baixo" returned the Music Man bass. | **The product name defines the brand.** Brand names that appear only in the description are ignored by the search, and the loader reports these cases. |
 
 ## 2. Promotions
 

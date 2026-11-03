@@ -83,6 +83,12 @@ st.title("🎸 Empório da Música")
 st.caption("Sua música começa aqui. · Atendimento virtual")
 
 
+def as_markdown(text: str) -> str:
+    # Streamlit renders text between two "$" as LaTeX math, which broke prices
+    # such as "R$ 1.599,00 (ou R$ 1.519,05 no PIX)". Found in manual testing.
+    return text.replace("$", r"\$")
+
+
 def render_tool_calls(tool_calls):
     if show_tools and tool_calls:
         with st.expander(f"🔧 {len(tool_calls)} chamada(s) de ferramenta"):
@@ -94,11 +100,11 @@ def render_tool_calls(tool_calls):
 for entry in st.session_state.display:
     with st.chat_message(entry["role"]):
         render_tool_calls(entry["tool_calls"])
-        st.markdown(entry["text"])
+        st.markdown(as_markdown(entry["text"]))
 
 if prompt := st.chat_input("Digite sua mensagem..."):
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(as_markdown(prompt))
 
     api_key = st.session_state.api_key or env_config.api_key
     needs_key = st.session_state.provider != "Ollama (local)"
@@ -113,7 +119,7 @@ if prompt := st.chat_input("Digite sua mensagem..."):
         with st.spinner("Tom está digitando..."):
             reply = agent.reply(st.session_state.history, prompt)
         render_tool_calls(reply.tool_calls)
-        st.markdown(reply.text)
+        st.markdown(as_markdown(reply.text))
         if reply.error:
             st.error(f"Detalhe técnico: {reply.error}")
 

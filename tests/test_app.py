@@ -34,3 +34,11 @@ def test_missing_key_shows_warning_instead_of_calling_llm(app):
     app.chat_input[0].set_value("oi").run()
     assert not app.exception
     assert "API key" in app.warning[0].value
+
+
+def test_prices_are_not_rendered_as_latex(app):
+    text = "Por R$ 1.599,00 (ou R$ 1.519,05 no PIX)"
+    app.session_state.display = [{"role": "assistant", "text": text, "tool_calls": []}]
+    app.run()
+    rendered = app.chat_message[0].markdown[0].value
+    assert rendered == r"Por R\$ 1.599,00 (ou R\$ 1.519,05 no PIX)"

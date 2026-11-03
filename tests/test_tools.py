@@ -145,3 +145,54 @@ def test_every_schema_has_an_implementation(tools):
     schema_names = {s["function"]["name"] for s in tool_schemas(tools.store)}
     assert schema_names == TOOL_NAMES
     assert all(callable(getattr(tools, n)) for n in schema_names)
+
+
+# --- Review fixes: product lookup never guesses --------------------------------
+
+@pytest.mark.parametrize("name", ["Takamine GD-20", "takamine gd 20", "Quanto custa o Takamine GD20?"])
+def test_model_codes_with_hyphen_or_space_match(tools, name):
+    assert tools.get_product(name=name)["product_id"] == 95
+
+
+def test_model_code_with_space_does_not_match_another_instrument(tools):
+    assert tools.get_product(name="Yamaha C 40")["product_id"] == 81
+
+
+@pytest.mark.parametrize("name", ["Yamaha saxofone", "violino Yamaha", "Fender baixo"])
+def test_partial_match_is_not_returned_as_the_product(tools, name):
+    result = tools.get_product(name=name)
+    assert "error" in result and "product_id" not in result
+
+
+def test_ambiguous_name_returns_candidates(tools):
+    result = tools.get_product(name="violão Takamine")
+    assert result["ambiguous"] is True
+    assert {c["product_id"] for c in result["candidates"]} == {95, 100, 105, 115}
+
+
+def test_stopwords_are_ignored(tools):
+    from emporio.tools import query_terms
+
+    assert query_terms("Quanto custa um violão para iniciante?") == ["violao", "iniciante"]
+    assert (tools.search_products(query="violão para iniciante", limit=100)
+            == tools.search_products(query="violão iniciante", limit=100))
+
+
+def test_brand_only_in_description_does_not_match(tools):
+    # Product 135 is "Music Man Bass 1X" but its description says "Fender Jazz Bass".
+    result = tools.search_products(query="Fender", category="Baixos")
+    assert result["total_found"] == 0
+
+
+def test_category_filter_is_applied_before_ranking(tools):
+    result = tools.search_products(query="Yamaha nylon", category="Baterias e Percussão")
+    assert result["total_found"] > 0
+    assert result["matched_all_terms"] is False
+    assert all("Yamaha" in p["name"] for p in result["products"])
+
+
+def test_exact_stock_is_not_exposed(tools):
+    product = tools.get_product(product_id=93)  # Martin D-28, stock 2
+    assert "stock_quantity" not in product
+    assert product["last_units"] is True
+    assert tools.get_product(product_id=81)["last_units"] is False

@@ -132,3 +132,10 @@ def test_sunday_closed_opens_monday():
 def test_before_opening_same_day():
     status = store_status(datetime(2026, 11, 3, 7, 0, tzinfo=STORE_TZ))
     assert status["next_opening"] == "terça (03/11) às 09:00"
+
+
+@pytest.mark.parametrize("value, text", [(429.9, "R$ 429,90"), (2199, "R$ 2.199,00"),
+                                         (12000, "R$ 12.000,00"), (99.98, "R$ 99,98")])
+def test_brl_formatting(value, text):
+    from emporio.rules import brl
+    assert brl(value) == text

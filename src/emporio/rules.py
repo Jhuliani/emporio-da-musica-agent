@@ -46,6 +46,11 @@ ORDER_STATUS_LABELS = {
 }
 
 
+def brl(value: float) -> str:
+    """429.9 -> 'R$ 429,90' (formatted in code: the LLM once wrote 'R$ 429,00')."""
+    return "R$ " + f"{value:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def payment_method_label(code: str) -> str:
     """'credit_6x' -> 'cartão de crédito em 6x'."""
     labels = {"pix": "PIX", "debit": "cartão de débito", "boleto": "boleto bancário"}

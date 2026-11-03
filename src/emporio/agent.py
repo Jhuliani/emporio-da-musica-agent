@@ -36,6 +36,22 @@ HANDOFF_NUDGE = (
 )
 
 
+MAX_HISTORY_TURNS = 8
+
+
+def trim_history(history: list[dict], max_turns: int = MAX_HISTORY_TURNS) -> list[dict]:
+    """Keep only the last `max_turns` customer turns sent to the LLM.
+
+    Tool results are large (a catalog search is ~2.5k tokens) and would be resent
+    on every message. Cutting at a user message keeps each tool call together
+    with its result, which the API requires.
+    """
+    user_indexes = [i for i, m in enumerate(history) if m.get("role") == "user"]
+    if len(user_indexes) <= max_turns:
+        return history
+    return history[user_indexes[-max_turns]:]
+
+
 @dataclass
 class ToolCall:
     name: str
@@ -65,6 +81,7 @@ class Agent:
         system = {"role": "system", "content": build_system_prompt(self.tools.now())}
         correction_index: Optional[int] = None
         empty_retry_used = False
+        history = trim_history(history)
 
         try:
             for _ in range(MAX_TOOL_ROUNDS):

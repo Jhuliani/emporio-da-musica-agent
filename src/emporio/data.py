@@ -24,6 +24,18 @@ FILE_PREFIX = "desafio_tecnico_ai_eng - "
 ProductStatus = Literal["active", "discontinued", "coming_soon"]
 OrderStatus = Literal["pending", "confirmed", "shipped", "delivered", "cancelled"]
 
+# Brands present in the catalog. Used to detect descriptions that mention a
+# brand different from the product name (the name is the source of truth).
+KNOWN_BRANDS = [
+    "Crafter", "Fender", "Giannini", "Gibson", "Ibanez", "Kala", "Kalani", "Korg", "Martin",
+    "Music Man", "Nord", "Ohana", "Pearl", "PRS", "Roland", "Rozini", "Shelby", "Tagima",
+    "Takamine", "Taylor", "Yamaha",
+]
+
+
+def brands_in(text: str) -> set[str]:
+    return {b for b in KNOWN_BRANDS if re.search(rf"\b{re.escape(b)}\b", text, re.IGNORECASE)}
+
 
 def _empty_to_none(value):
     if isinstance(value, str):
@@ -161,6 +173,12 @@ def validate(store: StoreData) -> list[str]:
         if p.status != "active" and p.stock_quantity > 0:
             issues.append(
                 f"Product {p.product_id} ({p.name}) has status '{p.status}' but stock {p.stock_quantity}."
+            )
+        other_brands = brands_in(p.description) - brands_in(p.name)
+        if other_brands:
+            issues.append(
+                f"Product {p.product_id} ({p.name}) description mentions another brand: "
+                f"{', '.join(sorted(other_brands))}."
             )
 
     used_categories = {p.category_id for p in store.products.values()}

@@ -31,3 +31,4 @@ def test_known_inconsistencies_are_reported():
     assert "Product 96" in issues and "out of stock" in issues
     assert "Order 3 total" in issues
     assert "Category 8" in issues
+    assert "Product 135 (Music Man Bass 1X Electric Bass) description mentions another brand: Fender" in issues
