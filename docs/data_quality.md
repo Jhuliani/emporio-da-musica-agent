@@ -42,6 +42,8 @@ The store provided six CSV tables and an internal policy manual (PDF). Before bu
 
 ## 5. Policy manual
 
+The PDF was transcribed to [`data/policies.md`](../data/policies.md), which the agent reads. The decisions below are applied inline there, each one marked with "[Nota de consistência]".
+
 | # | Finding | Decision |
 |---|---|---|
 | 5.1 | Two different WhatsApp numbers: **(67) 3341-4444** (cover and company data table, labeled "Phone / WhatsApp") and **(67) 3321-4500** (section 7). | (67) 3341-4444 is used: it appears twice, including the official company data table. |
